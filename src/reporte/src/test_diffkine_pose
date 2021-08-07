@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+ 
+from __future__ import print_function
+import rospy
+from sensor_msgs.msg import JointState
+ 
+from markers import *
+from proyectfunctions import *
+
+# Se inicializa el nodo
+rospy.init_node("testKineControlPosition")
+print('starting motion ... ')
+
+# Publisher: publica el joint_states 
+pub = rospy.Publisher('joint_states', JointState, queue_size=10000)
+
+# Archivos para guardas variables
+fxcurrent_p = open("/tmp/xcurrent_p.txt", "w")                
+fxdesired_p = open("/tmp/xdesired_p.txt", "w")
+fq_p = open("/tmp/q_p.txt", "w")
+
+# Markers para la posicion actual y deseada
+bmarker_current  = FrameMarker()
+bmarker_desired = FrameMarker(0.5)
+
+# Joint names: Nombres de las articulaciones
+jnames = ['joint_1','joint_2','joint_3','joint_4','joint_5','joint_6','joint_7' ]
+
+# Posicion deseada
+ang = pi/3
+Rd = np.array([[1,0,0],[0,0,-1],[0,1,0]])
+qd  = rot2quat(Rd)
+xd = np.array([0.8, 0.5, 1.4, qd[0], qd[1], qd[2], qd[3]])
+
+# Posicion inicial
+q0 = np.array([0, 0,0,0,0,0,0])
+T = fkine(q0)
+x0 = TF2xyzquat(T)
+
+# Markers para la posicion actual y deseada
+bmarker_current.setPose(x0)
+bmarker_desired.setPose(xd)
+ 
+# Objeto (mensaje) de tipo JointState
+jstate = JointState()
+# Asignar valores al mensaje
+jstate.header.stamp = rospy.Time.now()
+jstate.name = jnames
+# Publicar los valores articulares iniciales
+jstate.position = q0
+
+# Frecuencia (Hz) y el periodo de control
+freq = 200
+dt = 1.0/freq
+rate = rospy.Rate(freq)
+ 
+# Constante de control
+k = 0.1
+ 
+# Configuraciones iniciales de las articulaciones
+q = copy(q0)
+x = copy(x0)
+quat = x[3:7]
+
+# Inicializacion del vector de error (derivada del error)
+derror = np.zeros(7)
+
+# Loop principal
+while not rospy.is_shutdown():
+    # Tiempo requerido por ROS para ejecutar
+    jstate.header.stamp = rospy.Time.now()
+    # Ley del control cinematico para la posicion
+    # --------------------------------------------------
+    Qe = np.hstack(([ xd[3]*x[3] + np.dot(xd[4:7].T,x[4:7]),  -xd[3]*x[4:7] + x[3]*xd[4:7] - np.cross(xd[4:7],x[4:7]) ]))
+    Qe[0] = Qe[0] - 1
+
+    e = np.hstack((x[0:3] - xd[0:3], Qe))
+    e_p = -k*e 
+
+    J = jacobian_pose(q)
+    J_pinv = np.dot(J.T, np.linalg.inv( np.dot(J,J.T) + k**2*np.eye(7) ))
+    q_p=np.dot(J_pinv, e_p)
+    q = q + q_p*dt 
+
+    # Configuracion de la posicion actual
+    T = fkine(q)
+    x = TF2xyzquat(T)
+
+    # Se guardan los valores
+    fxdesired_p.write(str(xd[0])+' '+str(xd[1])+' '+str(xd[2])+' '+str(xd[3])+'\n')
+    fq_p.write(str(q[0])+" "+str(q[1])+" "+str(q[2])+" "+str(q[3])+" "+ str(q[4])+" "+str(q[5])+" "+str(q[6])+"\n")
+    fxcurrent_p.write(str(x[0])+' '+str(x[1]) +' '+str(x[2])+'\n')
+        
+    # Publicar el mensaje
+    jstate.position = q
+    pub.publish(jstate)
+    bmarker_desired.setPose(xd)
+    bmarker_current.setPose(x)
+    # Esperar por la siguiente iteracion
+    rate.sleep()
+
+
+

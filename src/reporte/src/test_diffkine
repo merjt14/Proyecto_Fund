@@ -1,0 +1,101 @@
+#!/usr/bin/env python
+ 
+from __future__ import print_function
+import rospy
+from sensor_msgs.msg import JointState
+ 
+from markers import *
+from proyectfunctions import *
+
+# Se inicializa el nodo
+rospy.init_node("testKineControlPosition")
+print('starting motion ... ')
+
+# Publisher: publish to the joint_states topic
+pub = rospy.Publisher('joint_states', JointState, queue_size=10000)
+
+# Archivos para guardas variables
+fxcurrent = open("/tmp/xcurrent.txt", "w")                
+fxdesired = open("/tmp/xdesired.txt", "w")
+fq = open("/tmp/q.txt", "w")
+
+# Markers para la posicion actual y deseada
+bmarker_current  = BallMarker(color['RED'])
+bmarker_desired = BallMarker(color['GREEN'])
+
+# Joint names: Nombres de las articulaciones
+jnames = ['joint_1','joint_2','joint_3','joint_4','joint_5','joint_6','joint_7' ]
+
+# Constante de control
+k = 1
+
+# Posicion deseada
+xd = np.array([0.3, 0.3, 1])
+
+# Configuracion y posicion inicial
+q0 = np.array([0,0,0,0,0,0,0])
+T = fkine(q0)
+x0 = T[0:3,3]
+
+# El marker rojo muestra la posicion alcanzada
+bmarker_current.xyz(x0)
+# El  marker verde muestra la posicion deseada
+bmarker_desired.xyz(xd)
+
+# Objeto (mensaje) de tipo JointState
+jstate = JointState()
+# Asignar valores al mensaje
+jstate.header.stamp = rospy.Time.now()
+jstate.name = jnames
+# Publicar los valores articulares
+jstate.position = q0
+
+# Frecuencia (Hz) y el periodo de control
+freq = 200
+dt = 1.0/freq
+rate = rospy.Rate(freq)
+ 
+# Configuraciones iniciales de las articulaciones
+q = copy(q0)
+# Main loop
+while not rospy.is_shutdown():
+    # Tiempo requerido por ROS para ejecutar
+    jstate.header.stamp = rospy.Time.now()
+    # Ley del control cinematico para la posicion
+    # -----------------------------
+    T = fkine(q)
+    x = T[0:3,3]
+    
+    e = x - xd    
+    e_p=-k*e
+
+    J=jacobian_position(q)
+    q_p=np.dot(np.linalg.pinv(J),e_p)
+ 
+    q = q + dt*q_p
+    # -----------------------------
+
+    # Log values                                                      
+    fxcurrent.write(str(x[0])+' '+str(x[1]) +' '+str(x[2])+'\n')
+    fxdesired.write(str(xd[0])+' '+str(xd[1])+' '+str(xd[2])+'\n')
+    fq.write(str(q[0])+" "+str(q[1])+" "+str(q[2])+" "+str(q[3])+" "+
+             str(q[4])+" "+str(q[5])+" "+str(q[6])+"\n")
+    
+    # Se publica el mensaje
+    jstate.position = q
+    pub.publish(jstate)
+    bmarker_desired.xyz(xd)
+    bmarker_current.xyz(x)
+    # Esperar por la siguiente iteracion
+    rate.sleep()
+
+
+
+print('ending motion ...')
+fxcurrent.close()
+fxdesired.close()
+fq.close()
+
+
+
+

@@ -1,0 +1,137 @@
+#!/usr/bin/env python
+ 
+import time
+import roslib; roslib.load_manifest('ur_driver')
+import rospy
+import actionlib
+from control_msgs.msg import *
+from trajectory_msgs.msg import *
+from std_msgs.msf import *
+from proyectfunctions import *
+
+global press_key
+press_key = "0"
+
+def callbak(msg):
+
+    global press_key
+    press_key = msg.data
+
+# Se inicializa el nodo
+rospy.Subscriber("/keys", String, callback)
+rospy.init_node("test1", disable_signals=True)
+
+
+if __name__ == '__main__':
+    robot_client = actionlib.SimpleActionClient('follow_joint_trajectory', FollowJointTrajectoryAction)
+
+    print "Waiting for server..."
+    robot_client.wait_for_server()
+    print "Connected to server"
+
+    # Joint names: Nombre de las articulaciones
+    joint_names = ['joint_1','joint_2','joint_3','joint_4','joint_5','joint_6','joint_7']
+    
+    # Posicion deseada
+    qd = rot2quat( np.array([[1,0,0],[0,0,-1],[0,1,0]]) )
+    xd = np.array( [0.8, 0.5, 1.4, qd[0], qd[1], qd[2], qd[3]] )
+    pos = np.copy(xd[0:3])
+
+    # Posicion inicial
+    Q0 = [0,0,0,0,0,0,0]
+    T = fkine(Q0)
+    x0 = TF2xyzquat(T)
+
+    # Se configura la variable objeto para la trayectoria 
+    g = FollowJointTrajectoryGoal()
+    g.trajectory = JointTrajectory()
+    g.trajectory.joint_names = joint_names
+
+    # Se envia la trayectoria al robot
+    robot_client.send_goal(g)
+    robot_client.wait_for_result()
+    rospy.sleep(1)
+
+    # Posicion inicial y limites
+    Q = copy(Q0)
+    x = copy(x0)
+    qlim = np.array([1.57 1.57 0.32 1.4 0.25 1.57 3.14])
+
+    # Constantes para la ley de control
+    k = 0.8
+    paso = 0.1
+    freq = 100
+    dt = 1.0/freq
+    rate = rospy.Rate(freq)
+    while not rospy.is_shutdown():
+        robot_client.cancel_goal()
+
+        # Se recibe el valor de teclas
+        if (press_key=="u" or press_key=="U"): # up
+            pos[2]=pos[2]+paso
+ 
+        elif (press_key=="d" or press_key=="D"): # down
+            pos[2]=pos[2]-paso
+ 
+        elif (press_key=="f" or press_key=="F"): # forward
+            pos[1]=pos[1]+paso
+ 
+        elif (press_key=="b" or press_key=="B"): # backward
+            pos[1]=pos[1]-paso
+ 
+        elif (press_key=="l" or press_key=="L"): # left
+            pos[0]=pos[0]+paso
+ 
+        elif (press_key=="r" or press_key=="R"): # right
+            pos[0]=pos[0]-paso
+ 
+        # Se establecen los limites
+        if (np.linalg.norm(pos) > 0.85):
+            i=np.argmax(pos)
+            pos[i]=0
+            if (np.linalg.norm(pos) > 0.85):
+                i=np.argmax(pos)
+                pos[i]=0
+                pos[i]=np.sqrt(0.85**2-np.sum(pos**2))
+            else:
+                pos[i]=np.sqrt(0.85**2-np.sum(pos**2))
+ 
+        print( "x deseado: " + str(pos) )
+ 
+        # Logica de control
+        # Se halla la posicion deseada        
+        xd[0:3] = copy(pos)
+
+        # Vector de derivada del error
+        Qe = np.hstack(([ xd[3]*x[3] + np.dot(xd[4:7].T,x[4:7]),  -xd[3]*x[4:7] + x[3]*xd[4:7] - np.cross(xd[4:7],x[4:7]) ]))
+        Qe[0] = Qe[0] - 1
+ 
+        # Ley de control
+        e = np.hstack((x[0:3] - xd[0:3], Qe))
+        e_p=-k*e
+ 
+        # Se calcula el jacobiano
+        J=jacobian_pose(Q)
+        J_pinv=np.dot(J.T, np.linalg.inv( np.dot(J,J.T) + k**2*np.eye(7) ))
+        # Se calcula la derivada actual de Q y se calcula el nuevo Q
+        Q_p=np.dot(J_pinv, e_p)
+        Q = Q + dt*Q_p
+        
+        # Se implementa los limites
+        i = np.where(abs(Q) > qlim)
+        Q[i]= qlim[i]*Q[i]/abs([i])
+ 
+        # Se actualiza la posicion actual
+        T = fkine(Q)
+        x = TF2xyzquat(T)
+
+        print( " x actual: " + str(x[0:3]))
+
+        # Se actualiza la trayectoria del robot
+        g.trajectory.points = [ JointTrajectoryPoint(positions=Q, velocities=[0]*6, time_from_start=rospy.Duration(0.01))]
+        robot_client.send_goal(g)
+        robot_client.wait_for_result()
+ 
+        rate.sleep()
+ 
+    robot_client.cancel_goal()

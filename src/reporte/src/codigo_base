@@ -1,0 +1,19 @@
+source: 
+source /home/user/proyecto/devel/setup.bash
+export LD_LIBRARY_PATH=~/proyecto/install/lib:$LD_LIBRARY_PATH
+export PYTHONPATH=~/proyecto/install/lib/python2.7/site-packages:$PYTHONPATH
+
+launch: 
+roslaunch robot_siad7n display.launch
+
+
+Exports:
+export LD_LIBRARY_PATH=~/proyecto/install/lib:$LD_LIBRARY_PATH
+export PYTHONPATH=~/proyecto/install/lib/python2.7/site-packages:$PYTHONPATH
+
+
+cmake .. -DRBDL_BUILD_PYTHON_WRAPPER=ON -DCMAKE_INSTALL_PREFIX=/home/user/proyecto/install -DRBDL_BUILD_ADDON_URDFREADER=ON
+
+exportar archivos txt:
+error = open("/tmp/variable.txt", "w")
+cp /tmp/error.txt /home/user/

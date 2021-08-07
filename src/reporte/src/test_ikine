@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import rospy
+from sensor_msgs.msg import JointState
+from markers import *
+from proyectfunctions import *
+
+# Se inicializa el nodo
+rospy.init_node("testInvKine")
+pub = rospy.Publisher('joint_states', JointState, queue_size=1000)
+
+# Markers para observar la posicion actual y deseada
+bmarker_current = BallMarker(color['RED'])
+bmarker_desired = BallMarker(color['GREEN'])
+error = open("/tmp/error.txt", "w")
+
+# Joint names: Nombre de las articulaciones
+jnames = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6', 'joint_7']
+
+# Posiciones deseadas (2 ejemplos)
+# Configuracion posible
+#xd = np.array([0.7, 0.5, 0.8])
+# Configuracion imposible
+xd = np.array([1.5, 0.5, 2])
+
+# Configuracion inicial
+q0 = [-0.74,0.86,0.13,-0.88,0.12,-1.09,-0.62]
+
+# Cinematica inversa
+q = ikine(xd, q0, error)
+print(q)
+# Posicion resultante (del efector final con respecto al sistema de la base)
+T = fkine(q)
+print(np.round(T,3))
+
+# El marker rojo muestra la posicion alcanzada
+bmarker_current.xyz(T[0:3,3])
+# El  marker verde muestra la posicion deseada
+bmarker_desired.xyz(xd)
+
+# Objeto (mensaje) de tipo JointState
+jstate = JointState()
+# Asignar valores al mensaje
+jstate.header.stamp = rospy.Time.now()
+jstate.name = jnames
+# Publicar los valores articulares
+jstate.position = q
+
+# Loop rate (in Hz)
+rate = rospy.Rate(100)
+# Loop ejecutable
+while not rospy.is_shutdown():
+    # Tiempo requerido por ROS para ejecutar
+    jstate.header.stamp = rospy.Time.now()
+    # Se publican los valores
+    pub.publish(jstate)
+    bmarker_current.publish()
+    bmarker_desired.publish()
+    # Se espera por la siguiente iteracion
+    rate.sleep()

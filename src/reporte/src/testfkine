@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+ 
+import rospy
+from sensor_msgs.msg import JointState
+ 
+from markers import *
+from proyectfunctions import *
+ 
+# Se inicializa el nodo
+rospy.init_node("testKinematics")
+pub = rospy.Publisher('joint_states', JointState, queue_size=1000)
+# Marker para la posicion del efector final
+bmarker = BallMarker(color['GREEN'])
+ 
+# Joint names: Nombre de las articulaciones
+jnames = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6', 'joint_7']
+
+# Configuraciones de las articulaciones
+# q = [0.32,0.7,0.32,-2.34,0.03,-1.57,2.20]
+# q = [0,0,0,0,0,0,0]
+# q = [-0.74,0.86,0.13,-0.88,0.12,-1.09,-0.62]
+q = [-1.0, -0.2, 0.2, -0.5, 0.15, -0.5, -0.8]
+
+print(q)
+ 
+# Posicion del efector final con respecto a la base del robot
+T = fkine(q)
+print( np.round(T, 3) )
+bmarker.position(T)
+ 
+# Objeto JointState que se utiliza para publicar los valores articulares
+jstate = JointState()
+# Configurar valores al mensaje
+jstate.header.stamp = rospy.Time.now()
+jstate.name = jnames
+# Publicar los valores articulares
+jstate.position = q
+ 
+# Loop rate (in Hz)
+rate = rospy.Rate(100)
+# Loop ejecutable
+while not rospy.is_shutdown():
+    # Tiempo requerido por ROS para ejecutar
+    jstate.header.stamp = rospy.Time.now()
+    # Se publican los valores
+    pub.publish(jstate)
+    bmarker.publish()
+    # Se espera por la siguiente iteracion
+    rate.sleep()
