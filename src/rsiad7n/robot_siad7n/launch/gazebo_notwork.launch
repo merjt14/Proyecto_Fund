@@ -1,0 +1,28 @@
+
+<launch>
+  <!-- Launch Gazebo  -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+
+  <!-- Load the URDF -->
+  <param name="robot_description" textfile="$(find robot_siad7n)/urdf/robot_siad7n.urdf" />
+
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false"
+    args="-urdf -model robot -param robot_description "
+    output="screen" />
+
+
+  <!-- Load controllers -->  <!-- start this controller -->
+  <rosparam file="$(find robot_siad7n)/config/arm_controller_sia.yaml" command="load"/>
+  <node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller" respawn="false" output="screen"/>
+
+  <node name="tf_footprint_base"
+    pkg="tf"
+    type="static_transform_publisher"
+    args="0 0 0 0 0 0 base_link base_footprint 40" />
+  
+  <node
+    name="fake_joint_calibration"
+    pkg="rostopic"
+    type="rostopic"
+    args="pub /calibrated std_msgs/Bool true" />
+</launch>
